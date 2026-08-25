@@ -59,6 +59,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: SignalForge-Studio-windows-x64
@@ -70,9 +71,9 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           $assets = Get-ChildItem release -File | ForEach-Object { $_.FullName }
-          gh release view $env:TAG_NAME 2>$null
+          gh release view $env:TAG_NAME --repo $env:GITHUB_REPOSITORY 2>$null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $env:TAG_NAME $assets --clobber
+            gh release upload $env:TAG_NAME $assets --clobber --repo $env:GITHUB_REPOSITORY
           } else {
-            gh release create $env:TAG_NAME $assets --title "SignalForge Studio $env:TAG_NAME" --generate-notes
+            gh release create $env:TAG_NAME $assets --title "SignalForge Studio $env:TAG_NAME" --generate-notes --repo $env:GITHUB_REPOSITORY
           }
