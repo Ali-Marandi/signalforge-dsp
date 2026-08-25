@@ -1,0 +1,20 @@
+# Python bytecode and virtual environments
+__pycache__/
+*.py[cod]
+.venv/
+
+# Test and Qt runtime artefacts
+.pytest_cache/
+artifacts/
+*.log
+
+# PyInstaller local output
+build/
+dist/
+*.spec
+
+# IDE and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

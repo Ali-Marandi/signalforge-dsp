@@ -1,0 +1,78 @@
+name: windows-release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build Windows x64 executable
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+      - name: Validate numerical and desktop behavior
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m unittest -v
+      - name: Package portable executable
+        run: >-
+          pyinstaller --noconfirm --clean --onefile --windowed
+          --name SignalForge-Studio
+          --version-file packaging/windows_version_info.txt
+          main.py
+      - name: Name deliverables and generate checksum
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $name = "SignalForge-Studio-${{ github.ref_name }}-win64.exe"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $name = "SignalForge-Studio-dev-win64.exe"
+          }
+          Copy-Item "dist/SignalForge-Studio.exe" "release/$name"
+          Copy-Item "THIRD_PARTY_NOTICES.md" "release/THIRD_PARTY_NOTICES.md"
+          $hash = Get-FileHash "release/$name" -Algorithm SHA256
+          "$($hash.Hash.ToLower())  $name" | Set-Content "release/$name.sha256" -NoNewline
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SignalForge-Studio-windows-x64
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-github-release:
+    name: Publish tagged release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-windows
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SignalForge-Studio-windows-x64
+          path: release
+      - name: Attach executable and checksum to GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          $assets = Get-ChildItem release -File | ForEach-Object { $_.FullName }
+          gh release view $env:TAG_NAME 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:TAG_NAME $assets --clobber
+          } else {
+            gh release create $env:TAG_NAME $assets --title "SignalForge Studio $env:TAG_NAME" --generate-notes
+          }
