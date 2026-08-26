@@ -19,11 +19,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            requirements-finance.txt
       - name: Install Qt runtime library for headless smoke tests
         run: sudo apt-get update && sudo apt-get install --yes libegl1
       - name: Install runtime and build dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt -r requirements-finance.txt
       - name: Run the complete unit and desktop smoke suite
         env:
           QT_QPA_PLATFORM: offscreen
