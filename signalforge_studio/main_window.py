@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from . import __version__
 from .models import ExportBundle, SignalData
+from .risk_window import RiskResearchDialog
 from .services import analyse_signal, export_csv, export_summary, generate_signal, import_signal
 from .widgets import MetricsPanel, PlotSeries, SignalPlot
 
@@ -47,6 +48,7 @@ class SignalForgeWindow(QMainWindow):
         super().__init__()
         self._signal: SignalData | None = None
         self._analysis = None
+        self._risk_dialog: RiskResearchDialog | None = None
         self.setWindowTitle(f"SignalForge Studio {__version__}")
         self.setMinimumSize(1120, 720)
         self.resize(1500, 900)
@@ -68,6 +70,8 @@ class SignalForgeWindow(QMainWindow):
         self._exit_action.triggered.connect(self.close)
         self._about_action = QAction("About SignalForge Studio", self)
         self._about_action.triggered.connect(self._show_about)
+        self._risk_research_action = QAction("Local Risk Research…", self)
+        self._risk_research_action.triggered.connect(self._open_risk_research)
 
         file_menu = self.menuBar().addMenu("File")
         file_menu.addAction(self._import_action)
@@ -77,6 +81,8 @@ class SignalForgeWindow(QMainWindow):
         file_menu.addAction(self._reset_action)
         file_menu.addSeparator()
         file_menu.addAction(self._exit_action)
+        analysis_menu = self.menuBar().addMenu("Analysis")
+        analysis_menu.addAction(self._risk_research_action)
         help_menu = self.menuBar().addMenu("Help")
         help_menu.addAction(self._about_action)
 
@@ -242,6 +248,13 @@ class SignalForgeWindow(QMainWindow):
         self.metrics_panel = MetricsPanel()
         self.metrics_panel.setMinimumWidth(220)
         return self.metrics_panel
+
+    def _open_risk_research(self) -> None:
+        if self._risk_dialog is None:
+            self._risk_dialog = RiskResearchDialog(application_version=__version__, parent=self)
+        self._risk_dialog.show()
+        self._risk_dialog.raise_()
+        self._risk_dialog.activateWindow()
 
     def _source_changed(self, source: str) -> None:
         analytical = source not in {"Noise", "Impulse"}

@@ -25,6 +25,16 @@ class DesktopSmokeTests(unittest.TestCase):
         self.assertIn("analysed", (window.statusBar().currentMessage() or window._status_label.text()).casefold())
         window.close()
 
+    def test_local_risk_workflow_opens_from_production_menu_path(self) -> None:
+        window = SignalForgeWindow()
+        window._open_risk_research()
+        self.application.processEvents()
+        self.assertIsNotNone(window._risk_dialog)
+        self.assertTrue(window._risk_dialog.isVisible())
+        self.assertFalse(window._risk_dialog._calculate_button.isEnabled())
+        window._risk_dialog.close()
+        window.close()
+
 
 if __name__ == "__main__":
     unittest.main()
