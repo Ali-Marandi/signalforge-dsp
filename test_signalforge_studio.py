@@ -7,11 +7,19 @@ import math
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from signalforge import dft_magnitudes, fft_magnitudes, frequency_bins, next_power_of_two
 from signalforge_studio import __version__
 from signalforge_studio.models import ExportBundle
-from signalforge_studio.services import analyse_signal, export_csv, export_summary, generate_signal, import_signal
+from signalforge_studio.services import (
+    MAX_IMPORT_BYTES,
+    analyse_signal,
+    export_csv,
+    export_summary,
+    generate_signal,
+    import_signal,
+)
 
 
 class FastSpectrumTests(unittest.TestCase):
@@ -71,6 +79,23 @@ class StudioServiceTests(unittest.TestCase):
             self.assertEqual(rows[0], ["time_seconds", "amplitude", "source", "sample_rate_hz"])
             self.assertEqual(len(rows), 4)
             self.assertIn('"application": "SignalForge Studio"', json_path.read_text(encoding="utf-8"))
+
+    def test_import_rejects_oversized_file_before_parsing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            source = Path(temporary_directory) / "oversized.csv"
+            source.write_bytes(b"0\n1\n")
+            with source.open("r+b") as handle:
+                handle.truncate(MAX_IMPORT_BYTES + 1)
+            with self.assertRaisesRegex(ValueError, "size limit"):
+                import_signal(source, sample_rate=1000)
+
+    def test_import_converts_file_access_error_to_validation_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            source = Path(temporary_directory) / "protected.csv"
+            source.write_text("0\n1\n", encoding="utf-8")
+            with patch("signalforge_studio.services.Path.read_text", side_effect=PermissionError("denied")):
+                with self.assertRaisesRegex(ValueError, "cannot be read"):
+                    import_signal(source, sample_rate=1000)
 
     def test_rejects_aliasing_and_oversized_smoothing_window(self) -> None:
         with self.assertRaisesRegex(ValueError, "Nyquist"):

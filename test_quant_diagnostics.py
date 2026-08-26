@@ -63,6 +63,14 @@ class PcaRegimeEngineTests(unittest.TestCase):
         self.assertGreater(sum(result.explained_variance_ratio), 0.0)
         self.assertGreaterEqual(result.reconstruction_rmse, 0.0)
 
+    def test_fit_scores_are_consistent_with_sign_aligned_components(self) -> None:
+        engine = PcaRegimeEngine(PcaConfig(n_components=2, min_observations=100))
+        result = engine.fit(self.matrix[:120], self.names)
+        raw = self.matrix[:120]
+        standardized = (raw - np.asarray(result.scaler_center)) / np.asarray(result.scaler_scale)
+        expected_scores = standardized @ np.asarray(result.components).T
+        np.testing.assert_allclose(np.asarray(result.component_scores), expected_scores, rtol=1e-10, atol=1e-10)
+
     def test_regime_detection_has_no_lookahead_output_shape(self) -> None:
         engine = PcaRegimeEngine(
             PcaConfig(n_components=2, min_observations=100, regime_z_threshold=2.0)
@@ -76,6 +84,15 @@ class PcaRegimeEngineTests(unittest.TestCase):
         self.assertEqual(len(result), 50)
         self.assertEqual(result[0].timestamp, "T100")
         self.assertTrue(result[-1].regime_shift)
+
+    def test_ratio_components_require_full_solver(self) -> None:
+        with self.assertRaisesRegex(DiagnosticValidationError, "requires solver='full'"):
+            PcaConfig(n_components=0.80, solver="randomized")
+
+    def test_component_count_above_matrix_rank_limit_is_blocked(self) -> None:
+        engine = PcaRegimeEngine(PcaConfig(n_components=5, min_observations=100))
+        with self.assertRaisesRegex(DiagnosticValidationError, "cannot exceed"):
+            engine.fit(self.matrix[:120], self.names)
 
     def test_non_unique_features_are_blocked(self) -> None:
         engine = PcaRegimeEngine(PcaConfig(n_components=2, min_observations=100))

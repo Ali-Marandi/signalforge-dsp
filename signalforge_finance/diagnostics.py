@@ -91,6 +91,8 @@ class PcaConfig:
                 raise DiagnosticValidationError("n_components must be >= 1.")
         elif not 0.0 < self.n_components <= 1.0:
             raise DiagnosticValidationError("n_components as a ratio must be in (0, 1].")
+        if isinstance(self.n_components, float) and self.solver != "full":
+            raise DiagnosticValidationError("n_components as a ratio requires solver='full'.")
         if self.min_assets < 3 or self.min_observations < 20:
             raise DiagnosticValidationError("PCA needs at least 3 assets and 20 observations.")
         if self.regime_z_threshold <= 0 or self.principal_angle_threshold_degrees <= 0:
@@ -304,6 +306,10 @@ class PcaRegimeEngine:
             )
         if len(feature_names) != matrix.shape[1] or len(set(feature_names)) != len(feature_names):
             raise DiagnosticValidationError("feature_names must be unique and match the matrix column count.")
+        if isinstance(self.config.n_components, int) and self.config.n_components > min(matrix.shape):
+            raise DiagnosticValidationError(
+                "n_components cannot exceed the smaller of observation and asset counts."
+            )
 
         scaler = self._new_scaler()
         transformed = scaler.fit_transform(matrix)

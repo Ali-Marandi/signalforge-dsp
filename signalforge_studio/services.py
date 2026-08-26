@@ -15,6 +15,7 @@ from .models import AnalysisResult, ExportBundle, SignalData
 
 
 MAX_SAMPLES = 131_072
+MAX_IMPORT_BYTES = 16 * 1024 * 1024
 
 
 def _validate_generation_inputs(
@@ -117,15 +118,19 @@ def _numeric_values_from_rows(rows: Iterable[list[str]]) -> list[float]:
 def import_signal(path: str | Path, *, sample_rate: float) -> SignalData:
     """Load the first numeric column of a UTF-8 CSV or text file."""
     file_path = Path(path)
-    if not file_path.exists() or not file_path.is_file():
-        raise ValueError("The selected file cannot be read.")
     if sample_rate <= 0:
         raise ValueError("Sample rate must be greater than zero.")
 
     try:
+        if not file_path.exists() or not file_path.is_file():
+            raise ValueError("The selected file cannot be read.")
+        if file_path.stat().st_size > MAX_IMPORT_BYTES:
+            raise ValueError("Import file exceeds the 16 MiB size limit.")
         text = file_path.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError as error:
         raise ValueError("Import files must be UTF-8 encoded text.") from error
+    except OSError as error:
+        raise ValueError("The selected file cannot be read.") from error
 
     try:
         dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
