@@ -12,6 +12,7 @@ from .diagnostics import (
     RollingGarchPoint,
     RollingGarchVolatilityForecaster,
 )
+from .risk_metrics import LocalRiskEngine, RiskConfig, RiskEstimate
 
 __all__ = [
     "DiagnosticValidationError",
@@ -24,4 +25,7 @@ __all__ = [
     "PcaRegimePoint",
     "RollingGarchPoint",
     "RollingGarchVolatilityForecaster",
+    "LocalRiskEngine",
+    "RiskConfig",
+    "RiskEstimate",
 ]
