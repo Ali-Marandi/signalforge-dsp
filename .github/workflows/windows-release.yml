@@ -19,9 +19,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            requirements-finance.txt
       - name: Install dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt -r requirements-finance.txt
       - name: Validate numerical and desktop behavior
         env:
           QT_QPA_PLATFORM: offscreen
