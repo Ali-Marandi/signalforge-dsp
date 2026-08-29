@@ -1,5 +1,7 @@
-# Optional local-only dependencies for SignalForge Financial Intelligence.
+# Finance extras for SignalForge Studio (optional local-only dependencies)
 # Install with: pip install -r requirements-finance.txt
-arch>=8,<9
-scikit-learn>=1.7,<2
+pandas>=2.0,<3
+numpy>=1.26,<2
 scipy>=1.14,<2
+scikit-learn>=1.7,<2
+arch>=8,<9
