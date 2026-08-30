@@ -16,6 +16,7 @@ import pandas as pd
 from signalforge_studio.models import SignalData
 
 PREFERRED_PRICE_COLUMNS = ("close", "adj_close", "adjusted_close", "price", "last")
+MAX_IMPORT_BYTES = 16 * 1024 * 1024
 
 
 def _choose_price_column(df: pd.DataFrame) -> str:
@@ -45,6 +46,14 @@ def import_market_csv(path: str | Path, *, datetime_column: Optional[str] = None
     path = Path(path)
     if not path.exists() or not path.is_file():
         raise ValueError("The selected file cannot be read.")
+
+    # guard file size to prevent memory blowups in the desktop app
+    try:
+        size = path.stat().st_size
+    except OSError:
+        raise ValueError("The selected file cannot be read.")
+    if size > MAX_IMPORT_BYTES:
+        raise ValueError("Import file exceeds the 16 MiB size limit.")
 
     # Let pandas attempt to parse datetimes lazily; we'll coerce/locate below
     df = pd.read_csv(path)
@@ -111,6 +120,13 @@ def import_market_csv_df(path: str | Path, *, datetime_column: Optional[str] = N
     path = Path(path)
     if not path.exists() or not path.is_file():
         raise ValueError("The selected file cannot be read.")
+
+    try:
+        size = path.stat().st_size
+    except OSError:
+        raise ValueError("The selected file cannot be read.")
+    if size > MAX_IMPORT_BYTES:
+        raise ValueError("Import file exceeds the 16 MiB size limit.")
 
     df = pd.read_csv(path)
     dt_col = None
