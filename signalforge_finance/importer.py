@@ -8,7 +8,7 @@ helpful for exploratory analysis from local CSVs.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -97,3 +97,61 @@ def import_market_csv(path: str | Path, *, datetime_column: Optional[str] = None
     samples = tuple(map(float, series.values))
     label = f"{path.stem} ({price_col})"
     return SignalData(samples=samples, sample_rate=float(sample_rate), label=label)
+
+
+def import_market_csv_df(path: str | Path, *, datetime_column: Optional[str] = None, tz: Optional[str] = None, resample_rule: Optional[str] = None) -> pd.DataFrame:
+    """
+    Read a market CSV and return a pandas Series or DataFrame indexed by timestamp.
+
+    This helper is intended for callers that need OHLC information for plotting
+    (candlesticks) or more advanced processing. It will parse datetimes, set
+    the index, optionally resample, and return the DataFrame with the original
+    columns (including parsed numeric columns).
+    """
+    path = Path(path)
+    if not path.exists() or not path.is_file():
+        raise ValueError("The selected file cannot be read.")
+
+    df = pd.read_csv(path)
+    dt_col = None
+    possible_dt_names = ["date", "datetime", "timestamp", "time", "ts"]
+    if datetime_column:
+        if datetime_column not in df.columns:
+            raise ValueError(f"datetime_column '{datetime_column}' not found in CSV")
+        dt_col = datetime_column
+    else:
+        for name in possible_dt_names:
+            if name in df.columns:
+                dt_col = name
+                break
+        if dt_col is None and df.columns.size >= 1:
+            first = df.columns[0]
+            parsed = pd.to_datetime(df[first], errors="coerce", infer_datetime_format=True)
+            if parsed.notna().sum() >= max(2, len(parsed) // 4):
+                dt_col = first
+                df[first] = parsed
+
+    if dt_col is None:
+        raise ValueError("Could not find a timestamp column. Provide datetime_column explicitly.")
+
+    df[dt_col] = pd.to_datetime(df[dt_col], errors="raise", infer_datetime_format=True)
+    if tz:
+        df[dt_col] = df[dt_col].dt.tz_localize(tz, ambiguous="infer", nonexistent="shift_forward")
+    df = df.set_index(dt_col).sort_index()
+
+    if resample_rule:
+        # for OHLC-like data prefer aggregate for ohlc
+        if {"open", "high", "low", "close"}.issubset({c.lower() for c in df.columns}):
+            # normalize column names casing
+            cols = {c.lower(): c for c in df.columns}
+            df_res = df.resample(resample_rule).agg({
+                cols.get("open"): "first",
+                cols.get("high"): "max",
+                cols.get("low"): "min",
+                cols.get("close"): "last",
+            })
+        else:
+            df_res = df.resample(resample_rule).last()
+        df = df_res.ffill().dropna()
+
+    return df

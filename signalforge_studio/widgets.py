@@ -1,11 +1,14 @@
-"""Custom Qt widgets used by SignalForge Studio."""
+"""Custom Qt widgets used by SignalForge Studio.
 
+Extended with a simple CandlePlot to support OHLC candlestick rendering for
+market data imported through the finance importer.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isfinite
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QPointF, Qt, QRectF
 from PySide6.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
@@ -186,6 +189,150 @@ class SignalPlot(QWidget):
             painter.fillRect(text_x, self._plot_rect.top() + 8, text_width, font_metrics.height() + 8, QColor("#17253a"))
             painter.setPen(QPen(QColor("#f2f6fb")))
             painter.drawText(text_x + 6, self._plot_rect.top() + font_metrics.height() + 10, text)
+        painter.end()
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt callback name
+        self._hover_point = event.position()
+        self.update()
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event: object) -> None:  # noqa: N802 - Qt callback name
+        self._hover_point = None
+        self.update()
+        super().leaveEvent(event)
+
+
+class CandlePlot(QWidget):
+    """Simple candlestick plot that consumes OHLC series indexed by time.
+
+    set_candles expects sequences for times (numeric, e.g., epoch seconds) and
+    open/high/low/close numeric values of equal length.
+    """
+
+    def __init__(self, title: str = "Candles", x_unit: str = "time", y_unit: str = "price", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._title = title
+        self._x_unit = x_unit
+        self._y_unit = y_unit
+        self._times: list[float] = []
+        self._opens: list[float] = []
+        self._highs: list[float] = []
+        self._lows: list[float] = []
+        self._closes: list[float] = []
+        self._hover_point = None
+        self._plot_rect = self.rect()
+        self.setMinimumHeight(220)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMouseTracking(True)
+
+    def set_candles(self, times: Sequence[float], opens: Sequence[float], highs: Sequence[float], lows: Sequence[float], closes: Sequence[float]) -> None:
+        if not (len(times) == len(opens) == len(highs) == len(lows) == len(closes)):
+            raise ValueError("All candle arrays must have the same length")
+        self._times = list(map(float, times))
+        self._opens = list(map(float, opens))
+        self._highs = list(map(float, highs))
+        self._lows = list(map(float, lows))
+        self._closes = list(map(float, closes))
+        self.update()
+
+    def clear(self) -> None:
+        self._times = []
+        self._opens = []
+        self._highs = []
+        self._lows = []
+        self._closes = []
+        self.update()
+
+    def _bounds(self) -> tuple[float, float, float, float]:
+        if not self._times or not self._closes:
+            return 0.0, 1.0, -1.0, 1.0
+        x_min, x_max = min(self._times), max(self._times)
+        y_min = min(self._lows)
+        y_max = max(self._highs)
+        if x_min == x_max:
+            x_min -= 0.5
+            x_max += 0.5
+        padding = (y_max - y_min) * 0.08 if y_max != y_min else max(abs(y_min) * 0.1, 1.0)
+        return x_min, x_max, y_min - padding, y_max + padding
+
+    def _point_for(self, x: float, y: float, bounds: tuple[float, float, float, float]) -> QPointF:
+        x_min, x_max, y_min, y_max = bounds
+        x_position = self._plot_rect.left() + (x - x_min) / (x_max - x_min) * self._plot_rect.width()
+        y_position = self._plot_rect.bottom() - (y - y_min) / (y_max - y_min) * self._plot_rect.height()
+        return QPointF(x_position, y_position)
+
+    def paintEvent(self, event: object) -> None:  # noqa: N802 - Qt callback name
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        background = QColor("#101826")
+        plot_background = QColor("#0c1320")
+        painter.fillRect(self.rect(), background)
+
+        painter.setPen(QPen(QColor("#f4f7fb")))
+        title_font = painter.font()
+        title_font.setBold(True)
+        title_base_size = title_font.pointSizeF()
+        title_font.setPointSizeF((title_base_size if title_base_size > 0 else 10.0) + 1.0)
+        painter.setFont(title_font)
+        painter.drawText(18, 27, self._title)
+
+        self._plot_rect = self.rect().adjusted(58, 44, -22, -42)
+        painter.fillRect(self._plot_rect, plot_background)
+
+        if not self._times:
+            painter.setPen(QPen(QColor("#7d91ad")))
+            painter.drawText(self._plot_rect, Qt.AlignmentFlag.AlignCenter, "Import market data with OHLC to view candlesticks")
+            painter.end()
+            return
+
+        bounds = self._bounds()
+        x_min, x_max, y_min, y_max = bounds
+
+        # draw grid
+        grid_pen = QPen(QColor("#26354b"), 1, Qt.PenStyle.DotLine)
+        painter.setPen(grid_pen)
+        for step in range(1, 5):
+            x = self._plot_rect.left() + self._plot_rect.width() * step / 5
+            y = self._plot_rect.top() + self._plot_rect.height() * step / 5
+            painter.drawLine(int(x), self._plot_rect.top(), int(x), self._plot_rect.bottom())
+            painter.drawLine(self._plot_rect.left(), int(y), self._plot_rect.right(), int(y))
+
+        # draw candles
+        count = len(self._times)
+        if count == 0:
+            painter.end()
+            return
+        # compute candle width in pixels
+        min_width = 2
+        max_width = 24
+        pixel_width = max(min_width, min(max_width, int(self._plot_rect.width() / (count * 1.5))))
+
+        for i in range(count):
+            t = self._times[i]
+            o = self._opens[i]
+            h = self._highs[i]
+            l = self._lows[i]
+            c = self._closes[i]
+            center = self._point_for(t, (o + c) / 2, bounds)
+            top = self._point_for(t, max(o, c), bounds)
+            bottom = self._point_for(t, min(o, c), bounds)
+            wick_top = self._point_for(t, h, bounds)
+            wick_bottom = self._point_for(t, l, bounds)
+            # wick
+            painter.setPen(QPen(QColor("#bfcfe0")))
+            painter.drawLine(int(center.x()), int(wick_top.y()), int(center.x()), int(wick_bottom.y()))
+            # body
+            if c >= o:
+                body_brush = QColor("#1bd6c7")
+                pen = QPen(QColor("#0b5f54"))
+            else:
+                body_brush = QColor("#e06a6a")
+                pen = QPen(QColor("#6a1515"))
+            painter.setPen(pen)
+            rect = QRectF(center.x() - pixel_width / 2, top.y(), pixel_width, max(1.0, bottom.y() - top.y()))
+            painter.fillRect(rect, body_brush)
+            painter.drawRect(rect)
+
         painter.end()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt callback name
